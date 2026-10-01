@@ -27,10 +27,11 @@ validação posterior.
 
 ## MODO: SPEC
 
-1. **Reescrita.** Leia `PASTA/00-prompt.md` (seção `## Original`) e use a skill `/prompt-orquestrator` para
-   reescrevê-la. Salve o resultado em `## Reescrito`, no mesmo arquivo. Se a skill não existir, reescreva você
-   mesma com objetivo, contexto, atores, restrições, critério de sucesso e fora de escopo, e registre a
-   ausência da skill em `handoffs.md` → `## Sugestões de ferramentas`.
+1. **Reescrita.** Use a skill do projeto `prompt-orquestrador` (`.claude/skills/prompt-orquestrador/`) com
+   `PASTA`. Ela lê `PASTA/00-prompt.md` (seção `## Original`), resolve os gaps sozinha (sem entrevista nem
+   aprovação), registra as decisões com a etapa `prompt` e escreve o resultado em `## Reescrito`. Se a skill
+   não carregar, siga o `SKILL.md` dela lendo o arquivo diretamente e registre a falha em `handoffs.md` →
+   `## Sugestões de ferramentas`.
 2. **Contexto.** Entenda o produto atual (README, docs, código só no nível necessário). Para buscas na
    codebase, delegue ao subagente `Explore`, que é mais barato.
 3. **Brainstorm autônomo.** Use a skill `superpowers:brainstorming` com estes ajustes, que têm prioridade
