@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Roda periodicamente (systemd timer ou cron). Para cada demanda interrompida por limite de uso,
+# espera RETRY_APOS_HORAS desde a última interrupção e chama `retomar`. Registra cada tentativa
+# e desiste após MAX_TENTATIVAS (ex.: limite semanal), notificando o humano.
+set -uo pipefail
+DEMANDAS_HOME="${DEMANDAS_HOME:-$HOME/.claude/demandas}"
+RETRY_APOS_HORAS="${RETRY_APOS_HORAS:-5}"
+MAX_TENTATIVAS="${MAX_TENTATIVAS:-3}"
+INT="$DEMANDAS_HOME/interrupcoes.jsonl"; RET="$DEMANDAS_HOME/retentativas.jsonl"
+AQUI="$(dirname "$(readlink -f "$0")")"
+. "$AQUI/../../.claude/hooks/_lib.sh" 2>/dev/null || notificar() { echo "[$1] $2"; }
+
+[ -f "$INT" ] || exit 0
+touch "$RET"
+AGORA="$(date +%s)"; ESPERA=$(( RETRY_APOS_HORAS * 3600 ))
+
+jq -rs '[.[] | select(.dem != "")] | group_by(.dem)[] | (max_by(.epoch)) | [.dem, (.epoch|tostring), (.retentavel|tostring)] | @tsv' "$INT" |
+while IFS=$'\t' read -r DEM ULT_INT RETENTAVEL; do
+  ULT_TRY="$(jq -rs --arg d "$DEM" '[.[] | select(.dem==$d) | .epoch] | max // 0' "$RET")"
+  N_TRY="$(jq -rs --arg d "$DEM" '[.[] | select(.dem==$d and .origem=="vigia")] | length' "$RET")"
+
+  [ "$ULT_TRY" -gt "$ULT_INT" ] && continue      # já retomada depois da última interrupção
+  [ "$RETENTAVEL" = "false" ] && continue        # créditos: o hook já notificou
+  if [ "$N_TRY" -ge "$MAX_TENTATIVAS" ]; then
+    MARCA="$DEMANDAS_HOME/.desistiu-$DEM"
+    [ -f "$MARCA" ] || { notificar "✋ $DEM precisa de você" "$N_TRY retomadas automáticas sem sucesso (limite semanal?). Rode: retomar $DEM"; touch "$MARCA"; }
+    continue
+  fi
+  [ $(( AGORA - ULT_INT )) -lt "$ESPERA" ] && continue
+
+  echo "[$(date '+%F %T')] retomando $DEM (tentativa $((N_TRY + 1))/$MAX_TENTATIVAS)"
+  RETOMAR_ORIGEM=vigia "$AQUI/retomar" "$DEM" || notificar "⚠️ Falha ao retomar $DEM" "Veja $DEMANDAS_HOME/vigia.log"
+done

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Retoma uma demanda interrompida, continuando a mesma sessão em background.
+# Uso: retomar <DEM-ID>
+set -euo pipefail
+DEMANDAS_HOME="${DEMANDAS_HOME:-$HOME/.claude/demandas}"
+DEM="${1:?Uso: retomar <DEM-ID>}"
+REG="$DEMANDAS_HOME/registry.tsv"; INT="$DEMANDAS_HOME/interrupcoes.jsonl"
+
+LINHA="$(awk -F"\t" -v d="$DEM" '$1==d' "$REG" 2>/dev/null | tail -n1 || true)"
+[ -z "$LINHA" ] && { echo "Demanda $DEM não encontrada em $REG" >&2; exit 1; }
+CURTO="$(cut -f2 <<<"$LINHA")"; ROOT="$(cut -f3 <<<"$LINHA")"
+
+# 1) session_id completo vindo do hook de interrupção; 2) senão, via claude agents --json
+SID=""
+[ -f "$INT" ] && SID="$(jq -rs --arg d "$DEM" '[.[] | select(.dem==$d)] | last | .session_id // empty' "$INT")"
+if [ -z "$SID" ] && [ "$CURTO" != "-" ]; then
+  SID="$(claude agents --json --all --cwd "$ROOT" | jq -r --arg s "$CURTO" '.[] | select(.id==$s) | .sessionId // empty' | head -n1)"
+fi
+[ -z "$SID" ] && { echo "Não achei o session_id de $DEM. Abra 'claude agents' e retome pela tela." >&2; exit 1; }
+
+# Não retoma se a sessão já está trabalhando
+ESTADO="$(claude agents --json --all --cwd "$ROOT" 2>/dev/null | jq -r --arg s "$SID" '.[] | select(.sessionId==$s) | .state // empty' | head -n1 || true)"
+if [ "$ESTADO" = "working" ]; then echo "$DEM já está em execução."; exit 0; fi
+
+cd "$ROOT"
+SAIDA="$(claude --resume "$SID" --bg "RETOMADA: a sessão de $DEM foi interrompida (limite de uso ou erro). Siga a seção Retomada do seu protocolo: leia docs/demands/$DEM/STATE.json e continue de etapa_atual sem refazer etapas concluídas." 2>&1)"
+echo "$SAIDA"
+
+NOVO="$(grep -oE 'backgrounded[^0-9a-f]+[0-9a-f]{6,}' <<<"$SAIDA" | grep -oE '[0-9a-f]{6,}$' | head -n1 || true)"
+[ -n "$NOVO" ] && [ "$NOVO" != "$CURTO" ] && printf '%s\t%s\t%s\t%s\n' "$DEM" "$NOVO" "$ROOT" "$(date -u +%FT%TZ)" >> "$REG"
+
+jq -nc --arg dem "$DEM" --arg ts "$(date -u +%FT%TZ)" --argjson epoch "$(date +%s)" --arg origem "${RETOMAR_ORIGEM:-manual}" \
+  '{dem:$dem, ts:$ts, epoch:$epoch, origem:$origem}' >> "$DEMANDAS_HOME/retentativas.jsonl"
+echo "🔁 $DEM retomada."

@@ -1,0 +1,14 @@
+# Copie para .claude/quality-gate.conf e ajuste. Sem este arquivo, o gate detecta gradlew/mvnw/npm.
+# Descomente UMA linha de QG_CMD conforme a sua stack:
+QG_CMD="./gradlew check --console=plain -q"      # Java/Kotlin (Gradle)
+# QG_CMD="./mvnw -B -q verify"                   # Java (Maven)
+# QG_CMD="npm run lint && npm test --silent"     # Node/TypeScript
+# QG_CMD="cargo clippy -q && cargo test --quiet" # Rust
+# QG_CMD="go vet ./... && go test ./..."         # Go
+# QG_CMD="ruff check . && python -m pytest -q"   # Python
+# QG_CMD="dotnet test"                           # .NET
+# QG_CMD="bundle exec rspec"                     # Ruby
+# QG_CMD="make check"                            # qualquer projeto com Makefile
+# Opcional: varredura de segredos no que foi alterado (requer gitleaks instalado)
+# QG_EXTRA_CMD="gitleaks git --no-banner --log-opts=origin/main..HEAD"
+QG_MAX_TENTATIVAS=3

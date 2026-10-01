@@ -1,0 +1,9 @@
+.claude/.demanda-ativa
+.claude/worktrees/
+.claude/settings.local.json
+.claude/agent-memory-local/
+.claude/quality-gate.conf
+.env
+.env.*
+*.pem
+*.key

@@ -1,0 +1,4 @@
+# Arquivos NÃO versionados que devem ser copiados para cada worktree.
+# Renomeie para .worktreeinclude se precisar. Evite incluir segredos de produção.
+# .env.local
+# config/application-local.yml

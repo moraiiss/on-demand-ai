@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2"
+  },
+  "permissions": {
+    "additionalDirectories": ["~/.claude/demandas"],
+    "allow": [
+      "Bash(./gradlew *)",
+      "Bash(./mvnw *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git merge-base *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch -c demanda/*)",
+      "Bash(git branch -m demanda/*)",
+      "Bash(git fetch*)",
+      "Bash(git rebase origin/main)",
+      "Bash(git push -u origin HEAD)",
+      "Bash(git push)",
+      "Bash(gh pr create --draft *)",
+      "Bash(gh pr view *)",
+      "Edit(docs/demands/**)",
+      "Edit(~/.claude/demandas/**)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.kube/**)",
+      "Edit(.claude/settings.json)",
+      "Edit(.claude/agents/**)",
+      "Edit(.claude/hooks/**)",
+      "Edit(.claude/skills/**)",
+      "Edit(.claude/templates/**)",
+      "Edit(.claude/quality-gate.conf)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push origin main*)",
+      "Bash(git push origin master*)",
+      "Bash(gh pr merge*)",
+      "Bash(git merge *)",
+      "Bash(sudo *)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(curl * | sh*)",
+      "Bash(curl * | bash*)",
+      "Bash(kubectl *)",
+      "Bash(terraform apply*)",
+      "Bash(terraform destroy*)"
+    ]
+  },
+  "hooks": {
+    "StopFailure": [
+      {
+        "matcher": "rate_limit",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/on-rate-limit.sh" }
+        ]
+      }
+    ]
+  }
+}

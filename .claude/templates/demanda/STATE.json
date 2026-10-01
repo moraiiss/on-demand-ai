@@ -1,0 +1,14 @@
+{
+  "id": "{{ID}}",
+  "status": "em_andamento",
+  "gate_plano": "{{GATE}}",
+  "etapa_atual": "preparar",
+  "etapas_concluidas": [],
+  "devolucoes_spec": 0,
+  "rodada_review": 0,
+  "progresso_impl": "",
+  "pr": "",
+  "criado_em": "{{DATA}}",
+  "atualizado_em": "{{DATA}}",
+  "interrupcoes": []
+}
