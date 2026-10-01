@@ -26,7 +26,7 @@ Pasta da demanda, daqui em diante chamada de `D`: `docs/demands/<ID>/`. Ela cont
 Crie no início exatamente estes itens e mantenha só um `in_progress` por vez:
 
 1. Preparar demanda
-2. PM: reescrever prompt (/prompt-orquestrator)
+2. PM: reescrever prompt (skill prompt-orquestrador)
 3. PM: spec (brainstorming)
 4. Staff: plano técnico
 5. Gate: aprovação do plano

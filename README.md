@@ -26,6 +26,7 @@ Licença: [MIT](LICENSE).
     on-rate-limit.sh            "levanta a mão": registra interrupção, marca STATE e notifica
     _lib.sh
   skills/demanda/SKILL.md       /demanda <texto> a partir de qualquer sessão
+  skills/prompt-orquestrador/   reescrita autônoma do prompt da demanda (usada pelo PM)
   templates/demanda/            STATE.json, handoffs.md, 00-prompt.md
   quality-gate.conf.example
 scripts/demandas/
@@ -41,7 +42,7 @@ docs/demands/<ID>/              artefatos de cada demanda (entram no PR)
 ## Instalação
 
 Pré-requisitos: `claude` (instalador nativo), `git`, `jq`, `gh` autenticado e o plugin **superpowers**
-instalado. Sua skill `/prompt-orquestrator` precisa estar disponível no projeto ou no usuário.
+instalado. A reescrita do prompt usa a skill `prompt-orquestrador`, que já vem no projeto.
 
 ```bash
 cp -r <scaffold>/. <seu-repo>/        # ou mescle com o seu .claude/ existente
