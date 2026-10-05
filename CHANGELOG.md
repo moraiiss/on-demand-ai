@@ -3,6 +3,13 @@
 Versões publicadas como tags `vX.Y.Z`. O `atualizar` usa a tag mais recente por padrão.
 Marque com **Ação** o que exigir um passo manual no projeto alvo depois de atualizar.
 
+## Não publicado
+
+- `.claude/settings.json`: `attribution` vazio para commits e PRs. O Claude Code deixa de adicionar
+  `Co-Authored-By: Claude` nos commits e `Generated with Claude Code` na descrição dos PRs.
+- **Ação:** se o `settings.json` do projeto alvo tiver customizações, a versão nova vai para
+  `settings.json.novo`; copie a chave `attribution` para o seu arquivo.
+
 ## v0.2.0
 
 - `scripts/demandas/atualizar`: instala e atualiza o pipeline nos projetos alvo a partir de uma tag, branch
