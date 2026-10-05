@@ -1,0 +1,29 @@
+# Manifesto do on-demand-ai: o que o `atualizar` instala e mantém nos projetos alvo.
+#
+#   gerenciado <caminho|dir/>  arquivo do pipeline. Sobrescrito na atualização, salvo se alterado no projeto.
+#                              Um diretório (com / no fim) cobre todos os arquivos dele nesta versão.
+#   semente <caminho>          criado só se não existir. Depois disso pertence ao projeto e nunca é tocado.
+#   ignorar <padrão>           linha garantida no .gitignore do projeto alvo.
+#
+# Arquivo novo no pipeline? Se não estiver coberto por um diretório abaixo, adicione-o aqui.
+
+gerenciado .claude/agents/
+gerenciado .claude/hooks/
+gerenciado .claude/skills/demanda/
+gerenciado .claude/skills/prompt-orquestrador/
+gerenciado .claude/templates/demanda/
+gerenciado .claude/settings.json
+gerenciado .claude/quality-gate.conf.example
+gerenciado .worktreeinclude.example
+gerenciado scripts/demandas/
+
+semente .claude/projeto.md
+semente docs/demands/.gitkeep
+
+ignorar .claude/.demanda-ativa
+ignorar .claude/worktrees/
+ignorar .claude/settings.local.json
+ignorar .claude/agent-memory-local/
+ignorar .claude/quality-gate.conf
+ignorar .claude/**/*.novo
+ignorar scripts/demandas/*.novo

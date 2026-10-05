@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+# Instala ou atualiza o pipeline on-demand-ai neste repositório a partir do repositório de origem.
+# Uso: atualizar [--ref <tag|branch|commit>] [--origem <url|caminho>] [--simular]
+set -euo pipefail
+
+ORIGEM_PADRAO="https://github.com/moraiiss/on-demand-ai.git"
+LOCK_REL=".claude/on-demand-ai.lock"
+MANIFESTO_REL="scripts/demandas/manifesto"
+
+uso() {
+  cat <<'TXT'
+Uso: atualizar [--ref <tag|branch|commit>] [--origem <url|caminho>] [--simular]
+
+Rode na raiz (ou em qualquer pasta) do projeto alvo. Sem --ref, usa a tag v* mais recente da origem
+(ou o branch padrão, se não houver tags). A origem padrão é a gravada em .claude/on-demand-ai.lock.
+
+  gerenciado sem alteração local  → sobrescrito pela versão nova
+  gerenciado alterado no projeto  → mantido; a versão nova vai para <arquivo>.novo
+  saiu do manifesto               → removido (ou mantido, se alterado no projeto)
+  semente                         → criada só se não existir
+
+Nada é commitado: revise com `git status`/`git diff`, resolva os .novo e commite.
+TXT
+}
+
+die() { echo "✗ $*" >&2; exit 1; }
+
+# O corpo inteiro fica numa função: o bash lê tudo antes de executar, então o script pode
+# sobrescrever a si mesmo (scripts/demandas/atualizar é gerenciado) sem quebrar no meio.
+main() {
+  ((BASH_VERSINFO[0] >= 4)) || die "requer bash 4+ (no macOS: brew install bash)"
+  local ref="" origem=""
+  SIMULAR=0
+  while (($#)); do
+    case "$1" in
+      --ref) ref="${2:?--ref exige um valor}"; shift 2 ;;
+      --origem) origem="${2:?--origem exige um valor}"; shift 2 ;;
+      --simular) SIMULAR=1; shift ;;
+      -h|--help) uso; return 0 ;;
+      *) echo "opção desconhecida: $1" >&2; uso >&2; return 2 ;;
+    esac
+  done
+
+  local root; root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "rode dentro de um repositório git"
+  cd "$root"
+
+  # ── lock atual ────────────────────────────────────────────────────────────
+  declare -gA BASE=()
+  local lock_origem="" k a b
+  if [[ -f $LOCK_REL ]]; then
+    while IFS=$'\t' read -r k a b; do
+      case "$k" in
+        origem) lock_origem="$a" ;;
+        arquivo) BASE["$b"]="$a" ;;
+      esac
+    done <"$LOCK_REL"
+  fi
+  origem="${origem:-${lock_origem:-$ORIGEM_PADRAO}}"
+
+  # ── origem ────────────────────────────────────────────────────────────────
+  SRC="$(mktemp -d)"
+  trap 'rm -rf "$SRC"' EXIT
+  echo "→ Baixando $origem"
+  git clone --quiet --no-checkout "$origem" "$SRC" || die "não foi possível clonar $origem"
+  if [[ -z $ref ]]; then
+    ref="$(git -C "$SRC" tag -l 'v*' --sort=-v:refname | head -n1)"
+    ref="${ref:-HEAD}"
+  fi
+  COMMIT="$(git -C "$SRC" rev-parse --verify --quiet "$ref^{commit}" ||
+    git -C "$SRC" rev-parse --verify --quiet "origin/$ref^{commit}")" || die "ref não encontrada na origem: $ref"
+  echo "→ Versão: $ref ($(git -C "$SRC" rev-parse --short "$COMMIT"))"
+
+  if git cat-file -e "$COMMIT^{commit}" 2>/dev/null && [[ -f $MANIFESTO_REL && ! -f $LOCK_REL ]]; then
+    die "este parece ser o próprio repositório on-demand-ai; rode o atualizar dentro do projeto alvo"
+  fi
+
+  # ── manifesto da versão alvo ──────────────────────────────────────────────
+  local manifesto
+  manifesto="$(git -C "$SRC" show "$COMMIT:$MANIFESTO_REL" 2>/dev/null)" ||
+    die "a versão $ref não tem $MANIFESTO_REL (anterior ao atualizar)"
+
+  declare -gA BLOB=() MODO=()
+  local -a ger=() sem=() ign=()
+  local tipo caminho modo _t blob f
+  while read -r tipo caminho; do
+    [[ -z $tipo || $tipo == \#* ]] && continue
+    case "$tipo" in
+      gerenciado)
+        while IFS=$'\t' read -r k f; do
+          read -r modo _t blob <<<"$k"
+          [[ -n ${BLOB[$f]:-} ]] && continue
+          BLOB["$f"]="$blob"; MODO["$f"]="$modo"; ger+=("$f")
+        done < <(git -C "$SRC" ls-tree -r "$COMMIT" -- "$caminho")
+        ;;
+      semente) sem+=("$caminho") ;;
+      ignorar) ign+=("$caminho") ;;
+      *) die "manifesto: tipo inválido '$tipo'" ;;
+    esac
+  done <<<"$manifesto"
+  ((${#ger[@]})) || die "o manifesto da versão $ref não lista nenhum arquivo"
+
+  # ── só atualiza sobre arquivos do pipeline limpos ─────────────────────────
+  local sujos
+  sujos="$(git status --porcelain -- "${ger[@]}" "${!BASE[@]}")"
+  if [[ -n $sujos ]]; then
+    ((SIMULAR)) || die "há alterações não commitadas em arquivos do pipeline; commite ou descarte antes:"$'\n'"$sujos"
+    echo "! há alterações não commitadas em arquivos do pipeline (ignorado em --simular)"
+  fi
+
+  ((SIMULAR)) && echo "→ Simulação: nenhum arquivo será alterado"
+  echo
+  migrar_contexto_staff
+
+  # ── gerenciados ───────────────────────────────────────────────────────────
+  declare -gA NOVA_BASE=()
+  local -a pendentes=()
+  local atual
+  for f in "${ger[@]}"; do
+    NOVA_BASE["$f"]="${BLOB[$f]}"
+    if [[ ! -e $f ]]; then
+      if [[ -n ${BASE[$f]:-} ]]; then relata restaurado "$f"; else relata criado "$f"; fi
+      escreve "$f" "$f"
+      continue
+    fi
+    atual="$(git hash-object -- "$f")"
+    if [[ $atual == "${BLOB[$f]}" ]]; then
+      :
+    elif inalterado "$f" "$atual"; then
+      relata atualizado "$f"; escreve "$f" "$f"
+    elif [[ ${BASE[$f]:-} == "${BLOB[$f]}" ]]; then
+      : # customizado no projeto e sem mudança na origem: nada a fazer
+    else
+      relata conflito "$f" "versão nova em $f.novo"
+      escreve "$f" "$f.novo"
+    fi
+    [[ -e $f.novo ]] && pendentes+=("$f.novo")
+  done
+
+  # ── removidos do manifesto ────────────────────────────────────────────────
+  for f in "${!BASE[@]}"; do
+    [[ -n ${NOVA_BASE[$f]:-} || ! -e $f ]] && continue
+    if [[ $(git hash-object -- "$f") == "${BASE[$f]}" ]]; then
+      relata removido "$f"
+      if ((!SIMULAR)); then rm -f -- "$f"; rmdir -- "$(dirname -- "$f")" 2>/dev/null || true; fi
+    else
+      relata mantido "$f" "saiu do pipeline, mas foi alterado no projeto"
+    fi
+  done
+
+  # ── sementes ──────────────────────────────────────────────────────────────
+  for f in "${sem[@]}"; do
+    [[ -e $f ]] && continue
+    git -C "$SRC" cat-file -e "$COMMIT:$f" 2>/dev/null || { echo "! semente ausente na origem: $f"; continue; }
+    relata criado "$f"
+    escreve "$f" "$f"
+  done
+
+  # ── .gitignore e lock ─────────────────────────────────────────────────────
+  local l
+  for l in "${ign[@]}"; do
+    grep -qxF -- "$l" .gitignore 2>/dev/null && continue
+    relata gitignore "$l"
+    ((SIMULAR)) || echo "$l" >>.gitignore
+  done
+
+  if ((!SIMULAR)); then
+    {
+      echo "# Gerado por scripts/demandas/atualizar. Não edite à mão; versione junto com o projeto."
+      printf 'origem\t%s\n' "$origem"
+      printf 'ref\t%s\n' "$ref"
+      printf 'commit\t%s\n' "$COMMIT"
+      for f in "${!NOVA_BASE[@]}"; do printf 'arquivo\t%s\t%s\n' "${NOVA_BASE[$f]}" "$f"; done | LC_ALL=C sort -k3
+    } >"$LOCK_REL"
+  fi
+
+  echo
+  if ((CONTAGEM_TOTAL == 0)); then
+    echo "✅ Já está em $ref. Nada a atualizar."
+  else
+    if ((SIMULAR)); then echo "Simulação concluída para $ref."; else echo "✅ Atualizado para $ref."; fi
+  fi
+  if ((${#pendentes[@]})); then
+    echo
+    echo "⚠ Arquivos alterados no projeto com versão nova pendente de mesclagem:"
+    printf '    %s\n' "${pendentes[@]}"
+    echo "  Mescle cada .novo no original (ou descarte) e apague o .novo."
+  fi
+  ((SIMULAR || CONTAGEM_TOTAL == 0)) || echo $'\nRevise com `git status` e `git diff` e commite junto com .claude/on-demand-ai.lock.'
+}
+
+CONTAGEM_TOTAL=0
+relata() {
+  CONTAGEM_TOTAL=$((CONTAGEM_TOTAL + 1))
+  printf '  %-11s %s%s\n' "$1" "$2" "${3:+  ($3)}"
+}
+
+# Grava o conteúdo de origem <caminho> (na versão alvo) em <destino>, com o bit de execução.
+escreve() {
+  ((SIMULAR)) && return 0
+  local f="$1" dest="$2"
+  mkdir -p -- "$(dirname -- "$dest")"
+  git -C "$SRC" show "$COMMIT:$f" >"$dest"
+  if [[ ${MODO[$f]:-} == 100755 ]]; then chmod +x -- "$dest"; fi
+}
+
+# O arquivo local é uma versão publicada (não editada no projeto)?
+# Com lock: compara com o que foi instalado. Sem lock (instalação antiga, por cópia):
+# procura o conteúdo em todo o histórico do arquivo na origem.
+inalterado() {
+  local f="$1" atual="$2"
+  if [[ -n ${BASE[$f]:-} ]]; then
+    [[ $atual == "${BASE[$f]}" ]]
+  else
+    local historico
+    historico="$(git -C "$SRC" log --no-abbrev --raw --format= "$COMMIT" -- "$f" | awk '{print $4}')"
+    grep -qxF -- "$atual" <<<"$historico"
+  fi
+}
+
+# Instalações antigas guardavam o contexto do projeto dentro do staff-engineer.md.
+# Move a seção para .claude/projeto.md e devolve o placeholder ao agente, para que ele
+# volte a bater com a versão publicada e possa ser atualizado sem conflito.
+migrar_contexto_staff() {
+  local staff=.claude/agents/staff-engineer.md alvo=.claude/projeto.md
+  local titulo='## Contexto do projeto (edite esta seção)'
+  [[ -f $staff && ! -e $alvo ]] || return 0
+  grep -qxF -- "$titulo" "$staff" || return 0
+
+  relata migrado "$alvo" "contexto do projeto movido de $staff"
+  ((SIMULAR)) && return 0
+  {
+    echo "# Contexto do projeto"
+    echo
+    echo "Lido pelo staff-engineer antes de planejar e revisar. Este arquivo pertence ao projeto: o \`atualizar\` cria"
+    echo "na primeira instalação e nunca sobrescreve."
+    echo
+    awk -v t="$titulo" '$0 == t {f=1; next} f && /^## / {exit} f' "$staff" |
+      awk 'NF {p=1} p' | awk '{l[NR]=$0} NF {n=NR} END {for (i=1; i<=n; i++) print l[i]}'
+  } >"$alvo"
+  local tmp; tmp="$(mktemp)"
+  awk -v t="$titulo" '
+    $0 == t {
+      print; print ""
+      print "- Stack: <ex.: Kotlin 2 / Spring Boot 3 / PostgreSQL / Kafka>"
+      print "- Padrões de arquitetura: <ex.: hexagonal, módulos por domínio>"
+      print "- Comando de build e testes: <ex.: ./gradlew check>"
+      print "- Áreas sensíveis que sempre exigem o humano: <ex.: autenticação, movimentação de dinheiro, migrações destrutivas>"
+      print ""; pula=1; next
+    }
+    pula && /^## / {pula=0}
+    !pula' "$staff" >"$tmp"
+  cat "$tmp" >"$staff"; rm -f "$tmp"
+}
+
+main "$@"
+exit

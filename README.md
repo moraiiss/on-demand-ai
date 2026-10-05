@@ -29,11 +29,15 @@ Licença: [MIT](LICENSE).
   skills/prompt-orquestrador/   reescrita autônoma do prompt da demanda (usada pelo PM)
   templates/demanda/            STATE.json, handoffs.md, 00-prompt.md
   quality-gate.conf.example
+  projeto.md                    contexto do projeto lido pelo Staff (pertence ao projeto alvo)
+  on-demand-ai.lock             versão instalada e checksums (gerado pelo atualizar, só no projeto alvo)
 scripts/demandas/
   demanda                       despacha uma demanda em background
   retomar                       retoma a mesma sessão a partir do checkpoint
   vigia-limites                 retentativa automática após o reset (5h), com registro
   instalar.sh
+  atualizar                     instala/atualiza o pipeline a partir deste repositório
+  manifesto                     o que é do pipeline (gerenciado) e o que é do projeto (semente)
   systemd/                      timer de usuário para o vigia (Pop!_OS/Linux)
 docs/demands/<ID>/              artefatos de cada demanda (entram no PR)
 ~/.claude/demandas/             registro global: registry.tsv, interrupcoes.jsonl, retentativas.jsonl, ativas/
@@ -45,21 +49,63 @@ Pré-requisitos: `claude` (instalador nativo), `git`, `jq`, `gh` autenticado e o
 instalado. A reescrita do prompt usa a skill `prompt-orquestrador`, que já vem no projeto.
 
 ```bash
-cp -r <scaffold>/. <seu-repo>/        # ou mescle com o seu .claude/ existente
 cd <seu-repo>
+bash <(curl -fsSL https://raw.githubusercontent.com/moraiiss/on-demand-ai/main/scripts/demandas/atualizar)
+# ou, a partir de um clone local: <clone>/scripts/demandas/atualizar
 ./scripts/demandas/instalar.sh
 git add .claude scripts docs .gitignore && git commit -m "chore: pipeline de demandas"
 ```
+
+O `atualizar` copia só os arquivos listados em `scripts/demandas/manifesto` (README, LICENSE e testes ficam
+de fora) e grava `.claude/on-demand-ai.lock`. Se o projeto já tiver um arquivo com o mesmo caminho (ex.:
+`.claude/settings.json`), ele não é sobrescrito: a versão do pipeline vai para `<arquivo>.novo`.
 
 O commit é obrigatório: os worktrees são criados a partir do repositório, então agentes, hooks e templates
 **precisam estar versionados** para existirem dentro de cada worktree.
 
 Depois:
-1. Preencha a seção **Contexto do projeto** em `.claude/agents/staff-engineer.md`.
+1. Preencha `.claude/projeto.md` (stack, padrões, comando de build, áreas sensíveis).
 2. O gate detecta Gradle, Maven e npm sozinho. Para qualquer outra stack (Rust, Go, Python, .NET, Ruby,
    Makefile...), copie `.claude/quality-gate.conf.example` para `.claude/quality-gate.conf` e escolha o comando.
 3. Rode `claude` uma vez no repositório e aceite o diálogo de confiança. Sem isso, os hooks definidos nos
    agentes não rodam.
+
+## Atualizar o pipeline num projeto que já usa
+
+```bash
+cd <seu-repo>
+./scripts/demandas/atualizar --simular     # mostra o que mudaria, sem tocar em nada
+./scripts/demandas/atualizar               # última tag v* (ou o branch padrão, se não houver tags)
+./scripts/demandas/atualizar --ref v0.2.0  # versão específica (tag, branch ou commit)
+git diff && git add -A && git commit -m "chore: atualiza on-demand-ai"
+```
+
+| Situação do arquivo no projeto | O que acontece |
+|---|---|
+| Igual ao que foi instalado | Sobrescrito pela versão nova |
+| Alterado no projeto, e a origem também mudou | Mantido; a versão nova vai para `<arquivo>.novo` para você mesclar |
+| Alterado no projeto, e a origem não mudou | Mantido, sem aviso |
+| Saiu do manifesto | Removido (ou mantido com aviso, se foi alterado no projeto) |
+| Semente (`.claude/projeto.md`, `docs/demands/.gitkeep`) | Criada só se não existir; nunca sobrescrita |
+
+- **Nada é commitado.** O script exige que os arquivos do pipeline estejam sem alterações pendentes, para
+  que o diff mostre só a atualização. Os `.novo` ficam no `.gitignore` e são listados a cada execução até
+  você mesclar e apagar.
+- **Instalação antiga, feita por cópia (sem lock).** Basta rodar o `atualizar` (pela URL acima, se o
+  projeto ainda não tiver o script). Ele reconhece qualquer versão já publicada de cada arquivo e trata só as
+  edições reais como customização. O contexto do projeto que ficava dentro do `staff-engineer.md` é movido
+  sozinho para `.claude/projeto.md`.
+- **Customize sem conflito.** Prefira os arquivos do projeto (`projeto.md`, `quality-gate.conf`,
+  `settings.local.json`) a editar agentes e hooks. Tudo que é editado num arquivo gerenciado vira mesclagem
+  manual a cada versão nova que mexer nele.
+- Depois de atualizar, rode `./scripts/demandas/instalar.sh` só se o CHANGELOG pedir (ex.: comando novo em
+  `~/.local/bin` ou mudança no timer do vigia).
+
+### Publicar uma versão (neste repositório)
+
+1. Arquivo novo fora dos diretórios já listados? Adicione em `scripts/demandas/manifesto`.
+2. Rode `tests/atualizar.sh`.
+3. Registre a mudança no `CHANGELOG.md`, faça o merge e crie a tag: `git tag v0.X.Y && git push --tags`.
 
 ## Uso
 

@@ -14,7 +14,7 @@ mkdir -p "$H/ativas"
 touch "$H/registry.tsv" "$H/interrupcoes.jsonl" "$H/retentativas.jsonl"
 
 echo "→ Permissões de execução"
-chmod +x .claude/hooks/*.sh scripts/demandas/demanda scripts/demandas/retomar scripts/demandas/vigia-limites
+chmod +x .claude/hooks/*.sh scripts/demandas/demanda scripts/demandas/retomar scripts/demandas/vigia-limites scripts/demandas/atualizar
 
 echo "→ Comandos em ~/.local/bin"
 mkdir -p "$HOME/.local/bin"
@@ -22,8 +22,8 @@ for s in demanda retomar vigia-limites; do ln -sf "$ROOT/scripts/demandas/$s" "$
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "  ! adicione ~/.local/bin ao PATH no ~/.zshrc";; esac
 
 echo "→ .gitignore"
-for l in ".claude/.demanda-ativa" ".claude/worktrees/" ".claude/settings.local.json" ".claude/agent-memory-local/" ".claude/quality-gate.conf"; do
-  grep -qxF "$l" .gitignore 2>/dev/null || echo "$l" >> .gitignore
+awk '$1 == "ignorar" {print $2}' scripts/demandas/manifesto | while IFS= read -r l; do
+  grep -qxF -- "$l" .gitignore 2>/dev/null || echo "$l" >> .gitignore
 done
 
 if command -v systemctl >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
@@ -41,8 +41,9 @@ fi
 cat <<MSG
 
 ✅ Instalado. Próximos passos:
-  1. Edite a seção "Contexto do projeto" em .claude/agents/staff-engineer.md
+  1. Preencha .claude/projeto.md (contexto do projeto lido pelo staff-engineer)
   2. (Opcional) cp .claude/quality-gate.conf.example .claude/quality-gate.conf
   3. Abra 'claude' uma vez neste repo e aceite o diálogo de confiança (necessário para hooks dos agentes)
   4. Teste: demanda --nome piloto "descreva aqui uma demanda pequena"
+  Para atualizar o pipeline depois: ./scripts/demandas/atualizar
 MSG
